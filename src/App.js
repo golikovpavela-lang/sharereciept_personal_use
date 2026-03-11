@@ -1,13 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "./supabase";
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
-const storage = (() => {
-  try { return window.localStorage; }
-  catch { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => (m[k] = v) }; }
-})();
-const load = (k, d) => { try { const v = storage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
-const save = (k, v) => storage.setItem(k, JSON.stringify(v));
 const uid = () => Math.random().toString(36).slice(2, 9);
+
+// ─── Локальный storage (только для онбординга) ────────────────────────────────
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
+const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
 // ─── Finance helpers ──────────────────────────────────────────────────────────
 const fmt = (n, currency = "RUB") =>
@@ -49,7 +47,6 @@ const paths = {
   trash: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
   check: "M20 6L9 17l-5-5",
   close: "M18 6L6 18M6 6l12 12",
-  camera: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z",
   home: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
   profile: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z",
@@ -230,12 +227,6 @@ select.input { appearance: none; cursor: pointer; }
 .cat-btn { width: 40px; height: 40px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface2); font-size: 20px; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; justify-content: center; }
 .cat-btn.sel { border-color: var(--blue); background: rgba(79,110,247,0.15); }
 
-/* ── Photo upload ── */
-.photo-upload { border: 1.5px dashed var(--border2); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; color: var(--muted2); }
-.photo-upload:hover { border-color: var(--blue); color: var(--blue2); }
-.photo-preview { border-radius: 16px; overflow: hidden; position: relative; }
-.photo-preview img { width: 100%; border-radius: 16px; display: block; }
-
 /* ── Profile ── */
 .profile-header { padding: 24px 16px 16px; text-align: center; }
 .profile-avatar { width: 80px; height: 80px; border-radius: 24px; background: linear-gradient(135deg, var(--blue), #8b5cf6); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 32px; font-weight: 800; }
@@ -254,31 +245,137 @@ select.input { appearance: none; cursor: pointer; }
 
 const CATS = ["💳","🍕","✈️","🏠","🎉","🛒","🚗","🎮","☕","💊","🍺","🎵"];
 
+// ─── Supabase helpers ─────────────────────────────────────────────────────────
+async function dbLoadGroups(userId) {
+  const { data: memberships } = await supabase
+    .from("group_members").select("group_id").eq("user_id", userId);
+  if (!memberships?.length) return [];
+  const groupIds = memberships.map(m => m.group_id);
+  const { data: groups } = await supabase
+    .from("groups").select("*").in("id", groupIds).order("created_at", { ascending: false });
+  if (!groups?.length) return [];
+  const result = await Promise.all(groups.map(async g => {
+    const { data: members } = await supabase
+      .from("group_members").select("user_id, users(id, name, tg_id)")
+      .eq("group_id", g.id);
+    const { data: expenses } = await supabase
+      .from("expenses").select("*").eq("group_id", g.id).order("created_at", { ascending: false });
+    return {
+      ...g,
+      members: (members || []).map(m => ({ id: m.users.id, name: m.users.name, tgId: m.users.tg_id })),
+      expenses: (expenses || []).map(e => ({
+        ...e, paidBy: e.paid_by, splitWith: e.split_with, amount: Number(e.amount)
+      })),
+    };
+  }));
+  return result;
+}
+
+async function dbGetOrCreateUser(tgUser) {
+  const { data: existing } = await supabase
+    .from("users").select("*").eq("tg_id", tgUser.id).single();
+  if (existing) return existing;
+  const { data: created } = await supabase.from("users").insert({
+    tg_id: tgUser.id, name: tgUser.first_name + (tgUser.last_name ? " " + tgUser.last_name : ""),
+    username: tgUser.username || null,
+  }).select().single();
+  return created;
+}
+
 // ─── App Shell ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [onboarded, setOnboarded] = useState(() => load("sg_onboarded", false));
-  const [groups, setGroups] = useState(() => load("sg_groups2", []));
+  const [onboarded, setOnboarded] = useState(() => lsGet("sr_onboarded", false));
+  const [groups, setGroups] = useState([]);
   const [tab, setTab] = useState("home");
   const [activeGroup, setActiveGroup] = useState(null);
   const [modal, setModal] = useState(null);
-  const [profile] = useState(() => load("sg_profile", { name: "Вы", notifs: true, currency: "RUB" }));
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
-  useEffect(() => save("sg_groups2", groups), [groups]);
+  // Инициализация — получаем пользователя из Telegram или создаём тестового
+  useEffect(() => {
+    const init = async () => {
+      let tgUser;
+      if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+        tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+      } else {
+        // Режим разработки — тестовый пользователь
+        tgUser = { id: 999999999, first_name: "Тест", last_name: "Пользователь", username: "testuser" };
+      }
+      const dbUser = await dbGetOrCreateUser(tgUser);
+      setUser(dbUser);
+      const loaded = await dbLoadGroups(dbUser.id);
+      setGroups(loaded);
+      setLoading(false);
+    };
+    init();
+  }, []);
 
-  const createGroup = (data) => { setGroups(g => [{ id: uid(), members: [], expenses: [], createdAt: Date.now(), ...data }, ...g]); setModal(null); };
-  const addMember = (gid, name) => { setGroups(gs => gs.map(g => g.id !== gid ? g : { ...g, members: [...g.members, { id: uid(), name }] })); setModal(null); };
-  const addExpense = (gid, exp) => { setGroups(gs => gs.map(g => g.id !== gid ? g : { ...g, expenses: [{ id: uid(), ...exp, date: Date.now() }, ...g.expenses] })); setModal(null); };
-  const delExpense = (gid, eid) => setGroups(gs => gs.map(g => g.id !== gid ? g : { ...g, expenses: g.expenses.filter(e => e.id !== eid) }));
-  const delGroup = (gid) => { setGroups(gs => gs.filter(g => g.id !== gid)); setActiveGroup(null); };
+  const reloadGroups = useCallback(async () => {
+    if (!user) return;
+    const loaded = await dbLoadGroups(user.id);
+    setGroups(loaded);
+  }, [user]);
 
-  if (!onboarded) return <><style>{CSS}</style><Onboard onDone={() => { save("sg_onboarded", true); setOnboarded(true); }} /></>;
+  const createGroup = async (data) => {
+    const { data: g } = await supabase.from("groups")
+      .insert({ name: data.name, emoji: data.emoji, created_by: user.id }).select().single();
+    await supabase.from("group_members").insert({ group_id: g.id, user_id: user.id });
+    await reloadGroups();
+    setModal(null);
+  };
+
+  const addMember = async (gid, name) => {
+    // Создаём временного пользователя без tg_id
+    const { data: newUser } = await supabase.from("users")
+      .insert({ tg_id: Date.now(), name }).select().single();
+    await supabase.from("group_members").insert({ group_id: gid, user_id: newUser.id });
+    await reloadGroups();
+    setModal(null);
+  };
+
+  const addExpense = async (gid, exp) => {
+    await supabase.from("expenses").insert({
+      group_id: gid, title: exp.title, amount: exp.amount,
+      category: exp.category, paid_by: exp.paidBy, split_with: exp.splitWith,
+    });
+    await reloadGroups();
+    setModal(null);
+  };
+
+  const delExpense = async (gid, eid) => {
+    await supabase.from("expenses").delete().eq("id", eid);
+    await reloadGroups();
+  };
+
+  const delGroup = async (gid) => {
+    await supabase.from("groups").delete().eq("id", gid);
+    setActiveGroup(null);
+    await reloadGroups();
+  };
+
+  if (!onboarded) return (
+    <><style>{CSS}</style>
+      <Onboard onDone={() => { lsSet("sr_onboarded", true); setOnboarded(true); }} />
+    </>
+  );
+
+  if (loading) return (
+    <div className="app" style={{ alignItems: "center", justifyContent: "center" }}>
+      <style>{CSS}</style>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>💸</div>
+        <div style={{ color: "var(--muted2)", fontSize: 14 }}>Загрузка...</div>
+      </div>
+    </div>
+  );
 
   const group = groups.find(g => g.id === activeGroup);
   if (activeGroup && group) {
     return (
       <div className="app">
         <style>{CSS}</style>
-        <GroupScreen group={group} onBack={() => setActiveGroup(null)}
+        <GroupScreen group={group} onBack={() => { setActiveGroup(null); reloadGroups(); }}
           onAddMember={n => addMember(group.id, n)}
           onAddExpense={e => addExpense(group.id, e)}
           onDelExpense={id => delExpense(group.id, id)}
@@ -299,12 +396,11 @@ export default function App() {
           <div className="header">
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 2 }}>Добро пожаловать</div>
-              <div className="title">{profile.name}</div>
+              <div className="title">{user?.name || "..."}</div>
             </div>
             <button className="btn-icon" onClick={() => setTab("profile")}><Ico n="settings" s={18} /></button>
           </div>
           <div className="page">
-            {/* Hero */}
             <div className="hero-card fade-up">
               <div className="label" style={{ marginBottom: 8 }}>Общие расходы</div>
               <div className="display mono">{fmt(totalSpent)}</div>
@@ -315,7 +411,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* My debts summary */}
             {allDebts.length > 0 && (
               <>
                 <div className="section">Долги</div>
@@ -377,7 +472,7 @@ export default function App() {
       )}
 
       {tab === "profile" && (
-        <ProfileScreen profile={profile} onBack={() => setTab("home")} />
+        <ProfileScreen user={user} onBack={() => setTab("home")} />
       )}
 
       <nav className="nav">
@@ -394,7 +489,6 @@ export default function App() {
     </div>
   );
 }
-
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 function Onboard({ onDone }) {
   const [step, setStep] = useState(0);
@@ -487,7 +581,6 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
                     <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exp.title}</div>
                     <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 2 }}>
                       {payer?.name} · {exp.splitWith?.length} чел
-                      {exp.photo && <span style={{ marginLeft: 6 }}>📷</span>}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", marginRight: 8 }}>
@@ -593,8 +686,8 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
 }
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
-function ProfileScreen({ profile, onBack }) {
-  const [notifs, setNotifs] = useState(profile.notifs);
+function ProfileScreen({ user, onBack }) {
+  const [notifs, setNotifs] = useState(true);
   return (
     <>
       <div className="header">
@@ -604,9 +697,9 @@ function ProfileScreen({ profile, onBack }) {
       <div className="page">
         <div style={{ textAlign: "center", padding: "24px 0 32px" }}>
           <div className="profile-avatar">
-            {profile.name?.[0] || "В"}
+            {user?.name?.[0] || "В"}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>{profile.name}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>{user?.name}</div>
           <div style={{ fontSize: 14, color: "var(--muted2)", marginTop: 4 }}>Telegram аккаунт</div>
         </div>
 
@@ -632,7 +725,7 @@ function ProfileScreen({ profile, onBack }) {
 
         <div className="section">О приложении</div>
         <div className="card" style={{ cursor: "default" }}>
-          {[["Версия", "1.0.0"], ["Разработчик", "SplitGo Team"], ["Поддержка", "@splitgo_support"]].map(([k, v]) => (
+          {[["Версия", "1.0.0"], ["Разработчик", "ShareReciept Team"], ["Поддержка", "@sharereciept_support"]].map(([k, v]) => (
             <div key={k} className="setting-row" style={{ borderBottom: k === "Поддержка" ? "none" : undefined }}>
               <span style={{ fontSize: 15, fontWeight: 500, color: "var(--muted2)" }}>{k}</span>
               <span style={{ fontSize: 14, fontFamily: "'Geist Mono'" }}>{v}</span>
@@ -700,19 +793,9 @@ function AddExpenseModal({ group, onClose, onAdd }) {
   const [paidBy, setPaidBy] = useState(group.members[0]?.id || "");
   const [splitWith, setSplitWith] = useState(group.members.map(m => m.id));
   const [cat, setCat] = useState("💳");
-  const [photo, setPhoto] = useState(null);
-  const fileRef = useRef();
 
   const toggle = id => setSplitWith(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const perHead = splitWith.length > 0 && amount ? fmt(parseFloat(amount) / splitWith.length) : null;
-
-  const handlePhoto = e => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = ev => setPhoto(ev.target.result);
-    reader.readAsDataURL(f);
-  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -762,30 +845,10 @@ function AddExpenseModal({ group, onClose, onAdd }) {
           </div>
         )}
 
-        {/* Photo upload */}
-        <div className="input-wrap">
-          <label className="input-label">Фото чека</label>
-          {photo ? (
-            <div className="photo-preview">
-              <img src={photo} alt="receipt" />
-              <button onClick={() => setPhoto(null)}
-                style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", borderRadius: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                <Ico n="close" s={14} />
-              </button>
-            </div>
-          ) : (
-            <div className="photo-upload" onClick={() => fileRef.current?.click()}>
-              <Ico n="camera" s={24} />
-              <div style={{ fontSize: 13 }}>Прикрепить фото чека</div>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
-            </div>
-          )}
-        </div>
-
         <div style={{ height: 8 }} />
         <button className="btn btn-primary"
           disabled={!title.trim() || !amount || splitWith.length === 0}
-          onClick={() => title.trim() && amount && splitWith.length > 0 && onAdd({ title: title.trim(), amount: parseFloat(amount), paidBy, splitWith, category: cat, photo })}>
+          onClick={() => title.trim() && amount && splitWith.length > 0 && onAdd({ title: title.trim(), amount: parseFloat(amount), paidBy, splitWith, category: cat })}>
           <Ico n="check" s={18} /> Добавить трату
         </button>
       </div>
