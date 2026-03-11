@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 
-const uid = () => Math.random().toString(36).slice(2, 9);
+
 
 // ─── Локальный storage (только для онбординга) ────────────────────────────────
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
@@ -69,7 +69,7 @@ const AVATAR_COLORS = [
   ["#2d132c", "#ee4540"], ["#1a1a2e", "#533483"],
 ];
 function Avatar({ name, size = 36, index = 0 }) {
-  const [bg, fg] = AVATAR_COLORS[index % AVATAR_COLORS.length];
+  const [, fg] = AVATAR_COLORS[index % AVATAR_COLORS.length];
   return (
     <div style={{
       width: size, height: size, borderRadius: size * 0.3,
@@ -522,7 +522,6 @@ function Onboard({ onDone }) {
 function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, onDelGroup }) {
   const [tab, setTab] = useState("expenses");
   const [modal, setModal] = useState(null);
-  const [selected, setSelected] = useState(null);
   const debts = calcDebts(group.members, group.expenses);
   const bal = calcBalances(group.members, group.expenses);
   const spent = group.expenses.reduce((s, e) => s + e.amount, 0);
