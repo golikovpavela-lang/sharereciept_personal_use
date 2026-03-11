@@ -705,20 +705,6 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
             <button className="btn btn-ghost" onClick={() => setModal("addMember")}>
               <Ico n="plus" s={18} /> Добавить участника
             </button>
-            <div style={{ height: 8 }} />
-            <button className="btn btn-ghost" onClick={() => {
-              const inviteLink = `https://t.me/SplitReciept_bot/sharereciept_personal_use?startapp=invite_${group.invite_code}`;
-              if (window.Telegram?.WebApp?.openTelegramLink) {
-                window.Telegram.WebApp.openTelegramLink(
-                  `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("Присоединяйся к нашей группе расходов в ShareReciept!")}`
-                );
-              } else {
-                navigator.clipboard.writeText(inviteLink);
-                alert("Ссылка скопирована: " + inviteLink);
-              }
-            }}>
-              <span style={{ fontSize: 18 }}>🔗</span> Поделиться группой
-            </button>
             <div style={{ height: 12 }} />
             <button className="btn btn-danger" onClick={() => { if (window.confirm("Удалить группу?")) onDelGroup(); }}>
               <Ico n="trash" s={18} /> Удалить группу
@@ -727,7 +713,7 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
         )}
       </div>
 
-      {modal === "addMember" && <AddMemberModal onClose={() => setModal(null)} onAdd={onAddMember} />}
+      {modal === "addMember" && <AddMemberModal onClose={() => setModal(null)} onAdd={onAddMember} inviteLink={`https://t.me/SplitReciept_bot/sharereciept_personal_use?startapp=invite_${group.invite_code}`} />}
       {modal === "addExpense" && <AddExpenseModal group={group} onClose={() => setModal(null)} onAdd={onAddExpense} />}
     </>
   );
@@ -815,22 +801,18 @@ function NewGroupModal({ onClose, onCreate }) {
   );
 }
 
-function AddMemberModal({ onClose, onAdd }) {
+function AddMemberModal({ onClose, onAdd, inviteLink }) {
   const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const isTelegram = !!window.Telegram?.WebApp?.requestContact;
 
-  const handleTelegramContact = () => {
-    if (!isTelegram) return;
-    setLoading(true);
-    window.Telegram.WebApp.requestContact((ok, contact) => {
-      setLoading(false);
-      if (ok && contact?.contact) {
-        const c = contact.contact;
-        const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ");
-        onAdd(fullName, c.user_id || null);
-      }
-    });
+  const handleShare = () => {
+    if (window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink(
+        `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("Присоединяйся к нашей группе расходов в ShareReciept!")}`
+      );
+    } else {
+      navigator.clipboard.writeText(inviteLink);
+      alert("Ссылка скопирована!");
+    }
   };
 
   return (
@@ -839,41 +821,39 @@ function AddMemberModal({ onClose, onAdd }) {
         <div className="sheet-handle" />
         <div className="sheet-title">Добавить участника</div>
 
-        {/* Кнопка Telegram */}
-        {isTelegram && (
-          <>
-            <button
-              className="btn"
-              disabled={loading}
-              onClick={handleTelegramContact}
-              style={{
-                background: "linear-gradient(135deg, #229ED9, #1a8bbf)",
-                color: "#fff", marginBottom: 8,
-              }}
-            >
-              <span style={{ fontSize: 18 }}>✈️</span>
-              {loading ? "Ожидание..." : "Выбрать из Telegram"}
-            </button>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 10, margin: "12px 0",
-              color: "var(--muted)", fontSize: 12,
-            }}>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              или введи вручную
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            </div>
-          </>
-        )}
+        {/* Поделиться ссылкой */}
+        <button
+          className="btn"
+          onClick={handleShare}
+          style={{
+            background: "linear-gradient(135deg, #229ED9, #1a8bbf)",
+            color: "#fff", marginBottom: 8,
+          }}
+        >
+          <span style={{ fontSize: 18 }}>🔗</span> Поделиться группой
+        </button>
+        <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginBottom: 16 }}>
+          Друг перейдёт по ссылке и автоматически войдёт в группу
+        </div>
+
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px",
+          color: "var(--muted)", fontSize: 12,
+        }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          или добавь вручную
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        </div>
 
         {/* Ручной ввод */}
         <div className="input-wrap">
-          <label className="input-label">Имя</label>
+          <label className="input-label">Имя участника</label>
           <input
             className="input"
             placeholder="Алексей"
             value={name}
             onChange={e => setName(e.target.value)}
-            autoFocus={!isTelegram}
+            autoFocus
           />
         </div>
         <div style={{ height: 8 }} />
