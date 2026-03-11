@@ -325,11 +325,28 @@ export default function App() {
     setModal(null);
   };
 
-  const addMember = async (gid, name) => {
-    // Создаём временного пользователя без tg_id
-    const { data: newUser } = await supabase.from("users")
-      .insert({ tg_id: Date.now(), name }).select().single();
-    await supabase.from("group_members").insert({ group_id: gid, user_id: newUser.id });
+  const addMember = async (gid, name, tgId = null) => {
+    let dbUser;
+    // Если есть tgId — ищем существующего пользователя
+    if (tgId) {
+      const { data: existing } = await supabase
+        .from("users").select("*").eq("tg_id", tgId).single();
+      if (existing) {
+        dbUser = existing;
+      }
+    }
+    // Если не нашли — создаём нового
+    if (!dbUser) {
+      const { data: created } = await supabase.from("users")
+        .insert({ tg_id: tgId || Date.now(), name }).select().single();
+      dbUser = created;
+    }
+    // Проверяем не добавлен ли уже в группу
+    const { data: existing } = await supabase.from("group_members")
+      .select("id").eq("group_id", gid).eq("user_id", dbUser.id).single();
+    if (!existing) {
+      await supabase.from("group_members").insert({ group_id: gid, user_id: dbUser.id });
+    }
     await reloadGroups();
     setModal(null);
   };
@@ -376,7 +393,7 @@ export default function App() {
       <div className="app">
         <style>{CSS}</style>
         <GroupScreen group={group} onBack={() => { setActiveGroup(null); reloadGroups(); }}
-          onAddMember={n => addMember(group.id, n)}
+          onAddMember={(n, tgId) => addMember(group.id, n, tgId)}
           onAddExpense={e => addExpense(group.id, e)}
           onDelExpense={id => delExpense(group.id, id)}
           onDelGroup={() => delGroup(group.id)} />
@@ -768,17 +785,71 @@ function NewGroupModal({ onClose, onCreate }) {
 
 function AddMemberModal({ onClose, onAdd }) {
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isTelegram = !!window.Telegram?.WebApp?.requestContact;
+
+  const handleTelegramContact = () => {
+    if (!isTelegram) return;
+    setLoading(true);
+    window.Telegram.WebApp.requestContact((ok, contact) => {
+      setLoading(false);
+      if (ok && contact?.contact) {
+        const c = contact.contact;
+        const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ");
+        onAdd(fullName, c.user_id || null);
+      }
+    });
+  };
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-title">Добавить участника</div>
+
+        {/* Кнопка Telegram */}
+        {isTelegram && (
+          <>
+            <button
+              className="btn"
+              disabled={loading}
+              onClick={handleTelegramContact}
+              style={{
+                background: "linear-gradient(135deg, #229ED9, #1a8bbf)",
+                color: "#fff", marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 18 }}>✈️</span>
+              {loading ? "Ожидание..." : "Выбрать из Telegram"}
+            </button>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10, margin: "12px 0",
+              color: "var(--muted)", fontSize: 12,
+            }}>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              или введи вручную
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+          </>
+        )}
+
+        {/* Ручной ввод */}
         <div className="input-wrap">
           <label className="input-label">Имя</label>
-          <input className="input" placeholder="Алексей" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          <input
+            className="input"
+            placeholder="Алексей"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            autoFocus={!isTelegram}
+          />
         </div>
-        <div style={{ height: 12 }} />
-        <button className="btn btn-primary" disabled={!name.trim()} onClick={() => name.trim() && onAdd(name.trim())}>
+        <div style={{ height: 8 }} />
+        <button
+          className="btn btn-primary"
+          disabled={!name.trim()}
+          onClick={() => name.trim() && onAdd(name.trim(), null)}
+        >
           <Ico n="check" s={18} /> Добавить
         </button>
       </div>
