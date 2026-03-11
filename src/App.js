@@ -245,8 +245,103 @@ select.input { appearance: none; cursor: pointer; }
 @keyframes scaleIn { from { transform: scale(0.85); opacity: 0 } to { transform: scale(1); opacity: 1 } }
 
 /* ── Animations ── */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
-.fade-up { animation: fadeUp 0.25s ease forwards; }
+/* ── Enhanced animations ── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(24px) } to { opacity: 1; transform: translateX(0) } }
+@keyframes slideInLeft { from { opacity: 0; transform: translateX(-24px) } to { opacity: 1; transform: translateX(0) } }
+@keyframes popIn { from { opacity: 0; transform: scale(0.92) } to { opacity: 1; transform: scale(1) } }
+@keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+
+.fade-up { animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
+.fade-in { animation: fadeIn 0.25s ease forwards; }
+.slide-right { animation: slideInRight 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
+.slide-left { animation: slideInLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
+.pop-in { animation: popIn 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* Staggered list items */
+.fade-up:nth-child(1) { animation-delay: 0.03s }
+.fade-up:nth-child(2) { animation-delay: 0.06s }
+.fade-up:nth-child(3) { animation-delay: 0.09s }
+.fade-up:nth-child(4) { animation-delay: 0.12s }
+.fade-up:nth-child(5) { animation-delay: 0.15s }
+
+/* Skeleton loading */
+.skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 10px; }
+
+/* Page transitions */
+.page { animation: fadeIn 0.2s ease; }
+
+/* Enhanced card hover */
+.card-tap { transition: transform 0.18s cubic-bezier(0.16,1,0.3,1), background 0.15s, border-color 0.15s, box-shadow 0.18s; }
+.card-tap:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.card-tap:active { transform: scale(0.98) translateY(0); box-shadow: none; transition-duration: 0.08s; }
+
+/* Enhanced button press */
+.btn { transition: transform 0.15s cubic-bezier(0.16,1,0.3,1), background 0.15s, box-shadow 0.15s, opacity 0.15s; }
+.btn:active:not(:disabled) { transform: scale(0.97); transition-duration: 0.08s; }
+
+/* Tab indicator animation */
+.tab { transition: background 0.2s cubic-bezier(0.16,1,0.3,1), color 0.15s; }
+.tab.on { animation: popIn 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+
+/* Nav button */
+.nav-btn { transition: color 0.2s cubic-bezier(0.16,1,0.3,1); }
+.nav-pip { animation: popIn 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+
+/* Input focus ring */
+.input { transition: border-color 0.2s, box-shadow 0.2s; }
+.input:focus { box-shadow: 0 0 0 3px rgba(79,110,247,0.15); }
+
+/* Member chip */
+.m-chip { transition: background 0.15s cubic-bezier(0.16,1,0.3,1), border-color 0.15s, color 0.15s, transform 0.12s; }
+.m-chip:active { transform: scale(0.96); }
+
+/* Debt row entrance */
+.debt-row { animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both; }
+.debt-row:nth-child(1) { animation-delay: 0.04s }
+.debt-row:nth-child(2) { animation-delay: 0.08s }
+.debt-row:nth-child(3) { animation-delay: 0.12s }
+
+/* Exp row entrance */
+.exp-row { animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both; transition: background 0.12s, transform 0.12s; }
+.exp-row:nth-child(1) { animation-delay: 0.04s }
+.exp-row:nth-child(2) { animation-delay: 0.08s }
+.exp-row:nth-child(3) { animation-delay: 0.12s }
+.exp-row:nth-child(4) { animation-delay: 0.16s }
+.exp-row:active { transform: scale(0.99); }
+
+/* Hero card entrance */
+.hero-card { animation: fadeUp 0.35s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* Sheet modal enhanced */
+.sheet { animation: sUp 0.28s cubic-bezier(0.16,1,0.3,1); }
+
+/* Success modal enhanced */
+.success-modal-box { animation: scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+.success-check { animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1) 0.1s both; }
+
+/* Toggle smooth */
+.toggle-dot { transition: left 0.22s cubic-bezier(0.34,1.56,0.64,1); }
+
+/* Onboarding dots */
+.onboard-step-dot { transition: width 0.25s cubic-bezier(0.34,1.56,0.64,1), background 0.2s; }
+
+/* Category button */
+.cat-btn { transition: border-color 0.15s, background 0.15s, transform 0.12s; }
+.cat-btn:active { transform: scale(0.9); }
+.cat-btn.sel { animation: popIn 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+
+/* Stat cards entrance */
+.stat-card { animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both; }
+.stats .stat-card:nth-child(1) { animation-delay: 0.05s }
+.stats .stat-card:nth-child(2) { animation-delay: 0.1s }
+
+/* Header entrance */
+.header { animation: slideInLeft 0.25s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* Section label */
+.section { animation: fadeIn 0.3s ease both; }
 `;
 
 const CATS = ["💳","🍕","✈️","🏠","🎉","🛒","🚗","🎮","☕","💊","🍺","🎵"];
@@ -549,26 +644,48 @@ export default function App() {
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 function Onboard({ onDone }) {
   const [step, setStep] = useState(0);
+  const [animKey, setAnimKey] = useState(0);
   const steps = [
     { ico: "💸", title: "Делите расходы честно", sub: "Поездки, ужины, аренда — всё в одном месте" },
     { ico: "⚡", title: "Мгновенный подсчёт долгов", sub: "Автоматически считаем кто кому и сколько должен" },
     { ico: "🔔", title: "Уведомления в Telegram", sub: "Напомним о долгах прямо в чате" },
   ];
   const s = steps[step];
+
+  const nextStep = () => {
+    if (step < steps.length - 1) {
+      setStep(step + 1);
+      setAnimKey(k => k + 1);
+    } else {
+      onDone();
+    }
+  };
+
   return (
     <div className="app">
       <div className="onboard">
         <div className="onboard-glow" />
-        <div className="onboard-logo">{s.ico}</div>
-        <div className="display" style={{ marginBottom: 16, maxWidth: 280 }}>{s.title}</div>
-        <div style={{ fontSize: 16, color: "var(--muted2)", lineHeight: 1.6, maxWidth: 260, marginBottom: 48 }}>{s.sub}</div>
+        <div key={`ico-${animKey}`} className="onboard-logo pop-in"
+          style={{ animationDelay: "0s" }}>{s.ico}</div>
+        <div key={`title-${animKey}`} className="display fade-up"
+          style={{ marginBottom: 16, maxWidth: 280, animationDelay: "0.05s" }}>{s.title}</div>
+        <div key={`sub-${animKey}`} style={{
+          fontSize: 16, color: "var(--muted2)", lineHeight: 1.6,
+          maxWidth: 260, marginBottom: 48,
+          animation: "fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) 0.1s both"
+        }}>{s.sub}</div>
         <div style={{ display: "flex", gap: 6, marginBottom: 32 }}>
           {steps.map((_, i) => (
-            <div key={i} style={{ height: 4, borderRadius: 2, background: i === step ? "var(--blue)" : "var(--surface3)", width: i === step ? 24 : 12, transition: "all 0.2s" }} />
+            <div key={i} className="onboard-step-dot" style={{
+              height: 4, borderRadius: 2,
+              background: i === step ? "var(--blue)" : "var(--surface3)",
+              width: i === step ? 24 : 12,
+            }} />
           ))}
         </div>
-        <button className="btn btn-primary" style={{ maxWidth: 300 }} onClick={() => step < steps.length - 1 ? setStep(step + 1) : onDone()}>
-          {step < steps.length - 1 ? "Далее" : "Начать"}
+        <button className="btn btn-primary" style={{ maxWidth: 300, animation: "fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) 0.15s both" }}
+          onClick={nextStep}>
+          {step < steps.length - 1 ? "Далее →" : "Начать"}
         </button>
       </div>
     </div>
