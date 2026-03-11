@@ -434,7 +434,8 @@ export default function App() {
           onAddMember={(n, tgId) => addMember(group.id, n, tgId)}
           onAddExpense={e => addExpense(group.id, e)}
           onDelExpense={id => delExpense(group.id, id)}
-          onDelGroup={() => delGroup(group.id)} />
+          onDelGroup={() => delGroup(group.id)}
+          currentUserId={user?.id} />
       </div>
     );
   }
@@ -575,7 +576,7 @@ function Onboard({ onDone }) {
 }
 
 // ─── Group Screen ─────────────────────────────────────────────────────────────
-function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, onDelGroup }) {
+function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, onDelGroup, currentUserId }) {
   const [tab, setTab] = useState("expenses");
   const [modal, setModal] = useState(null);
   const debts = calcDebts(group.members, group.expenses);
@@ -642,12 +643,14 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
                     <div style={{ fontFamily: "'Geist Mono'", fontSize: 15, fontWeight: 400 }}>{fmt(exp.amount)}</div>
                     <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>по {fmt(exp.amount / (exp.splitWith?.length || 1))}</div>
                   </div>
-                  <button style={{ background: "none", border: "none", color: "var(--muted)", padding: 4, borderRadius: 8, transition: "color 0.12s" }}
-                    onMouseEnter={e => e.target.style.color = "var(--red)"}
-                    onMouseLeave={e => e.target.style.color = "var(--muted)"}
-                    onClick={() => onDelExpense(exp.id)}>
-                    <Ico n="trash" s={16} />
-                  </button>
+                  {currentUserId === exp.paidBy && (
+                    <button style={{ background: "none", border: "none", color: "var(--muted)", padding: 4, borderRadius: 8, transition: "color 0.12s" }}
+                      onMouseEnter={e => e.target.style.color = "var(--red)"}
+                      onMouseLeave={e => e.target.style.color = "var(--muted)"}
+                      onClick={() => onDelExpense(exp.id)}>
+                      <Ico n="trash" s={16} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -931,9 +934,16 @@ function AddExpenseModal({ group, onClose, onAdd }) {
   const [paidBy, setPaidBy] = useState(group.members[0]?.id || "");
   const [splitWith, setSplitWith] = useState(group.members.map(m => m.id));
   const [cat, setCat] = useState("💳");
+  const [success, setSuccess] = useState(false);
 
   const toggle = id => setSplitWith(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const perHead = splitWith.length > 0 && amount ? fmt(parseFloat(amount) / splitWith.length) : null;
+
+  const handleAdd = () => {
+    if (!title.trim() || !amount || splitWith.length === 0) return;
+    onAdd({ title: title.trim(), amount: parseFloat(amount), paidBy, splitWith, category: cat });
+    setSuccess(true);
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -986,9 +996,10 @@ function AddExpenseModal({ group, onClose, onAdd }) {
         <div style={{ height: 8 }} />
         <button className="btn btn-primary"
           disabled={!title.trim() || !amount || splitWith.length === 0}
-          onClick={() => title.trim() && amount && splitWith.length > 0 && onAdd({ title: title.trim(), amount: parseFloat(amount), paidBy, splitWith, category: cat })}>
+          onClick={handleAdd}>
           <Ico n="check" s={18} /> Добавить трату
         </button>
+        {success && <SuccessModal text="Трата добавлена!" onClose={() => { setSuccess(false); onClose(); }} />}
       </div>
     </div>
   );
