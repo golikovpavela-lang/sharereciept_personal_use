@@ -238,6 +238,12 @@ select.input { appearance: none; cursor: pointer; }
 .toggle.on .toggle-dot { left: 22px; }
 .toggle.off .toggle-dot { left: 2px; }
 
+/* ── Success Modal ── */
+.success-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 200; animation: oIn 0.15s ease; }
+.success-modal-box { background: var(--surface2); border: 1px solid var(--border2); border-radius: 20px; padding: 32px 40px; text-align: center; animation: scaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+.success-check { width: 56px; height: 56px; border-radius: 18px; background: rgba(0,212,170,0.15); border: 1px solid rgba(0,212,170,0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; font-size: 26px; }
+@keyframes scaleIn { from { transform: scale(0.85); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+
 /* ── Animations ── */
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
 .fade-up { animation: fadeUp 0.25s ease forwards; }
@@ -291,6 +297,7 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [joinSuccess, setJoinSuccess] = useState(false);
 
   // Инициализация — получаем пользователя из Telegram или создаём тестового
   useEffect(() => {
@@ -313,11 +320,20 @@ export default function App() {
         const { data: group } = await supabase
           .from("groups").select("id").eq("invite_code", inviteCode).single();
         if (group) {
-          const { data: already } = await supabase.from("group_members")
-            .select("id").eq("group_id", group.id).eq("user_id", dbUser.id).single();
-          if (!already) {
-            await supabase.from("group_members")
-              .insert({ group_id: group.id, user_id: dbUser.id });
+          // Проверяем лимит 20 участников
+          const { count } = await supabase.from("group_members")
+            .select("id", { count: "exact" }).eq("group_id", group.id);
+          if (count >= 20) {
+            // группа заполнена — просто показываем её
+          } else {
+            const { data: already } = await supabase.from("group_members")
+              .select("id").eq("group_id", group.id).eq("user_id", dbUser.id).single();
+            if (!already) {
+              await supabase.from("group_members")
+                .insert({ group_id: group.id, user_id: dbUser.id });
+              // Показываем подтверждение — устанавливаем флаг
+              window.__joinedGroupId = group.id;
+            }
           }
         }
       }
@@ -325,6 +341,10 @@ export default function App() {
       const loaded = await dbLoadGroups(dbUser.id);
       setGroups(loaded);
       setLoading(false);
+      if (window.__joinedGroupId) {
+        setJoinSuccess(true);
+        delete window.__joinedGroupId;
+      }
     };
     init();
   }, []);
@@ -521,6 +541,7 @@ export default function App() {
       </nav>
 
       {modal === "newGroup" && <NewGroupModal onClose={() => setModal(null)} onCreate={createGroup} />}
+      {joinSuccess && <SuccessModal text="Вы добавлены в группу!" onClose={() => setJoinSuccess(false)} />}
     </div>
   );
 }
@@ -713,7 +734,7 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
         )}
       </div>
 
-      {modal === "addMember" && <AddMemberModal onClose={() => setModal(null)} onAdd={onAddMember} inviteLink={`https://t.me/SplitReciept_bot/sharereciept_personal_use?startapp=invite_${group.invite_code}`} />}
+      {modal === "addMember" && <AddMemberModal onClose={() => setModal(null)} onAdd={onAddMember} inviteLink={`https://t.me/SplitReciept_bot/sharereciept_personal_use?startapp=invite_${group.invite_code}`} memberCount={group.members.length} />}
       {modal === "addExpense" && <AddExpenseModal group={group} onClose={() => setModal(null)} onAdd={onAddExpense} />}
     </>
   );
@@ -801,8 +822,33 @@ function NewGroupModal({ onClose, onCreate }) {
   );
 }
 
-function AddMemberModal({ onClose, onAdd, inviteLink }) {
+function SuccessModal({ text, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 2000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  return (
+    <div className="success-modal" onClick={onClose}>
+      <div className="success-modal-box">
+        <div className="success-check">✓</div>
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em" }}>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function AddMemberModal({ onClose, onAdd, inviteLink, memberCount }) {
   const [name, setName] = useState("");
+  const [success, setSuccess] = useState(false);
+  const MAX_MEMBERS = 20;
+  const isFull = memberCount >= MAX_MEMBERS;
+
+  const handleAdd = () => {
+    if (!name.trim() || isFull) return;
+    onAdd(name.trim(), null);
+    setName("");
+    setSuccess(true);
+  };
 
   const handleShare = () => {
     if (window.Telegram?.WebApp?.openTelegramLink) {
@@ -845,6 +891,13 @@ function AddMemberModal({ onClose, onAdd, inviteLink }) {
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         </div>
 
+        {/* Лимит участников */}
+        {isFull && (
+          <div style={{ background: "rgba(255,77,106,0.1)", border: "1px solid rgba(255,77,106,0.25)", borderRadius: 12, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "var(--red)", textAlign: "center" }}>
+            Максимум 20 участников в группе
+          </div>
+        )}
+
         {/* Ручной ввод */}
         <div className="input-wrap">
           <label className="input-label">Имя участника</label>
@@ -854,16 +907,19 @@ function AddMemberModal({ onClose, onAdd, inviteLink }) {
             value={name}
             onChange={e => setName(e.target.value)}
             autoFocus
+            disabled={isFull}
           />
         </div>
         <div style={{ height: 8 }} />
         <button
           className="btn btn-primary"
-          disabled={!name.trim()}
-          onClick={() => name.trim() && onAdd(name.trim(), null)}
+          disabled={!name.trim() || isFull}
+          onClick={handleAdd}
         >
           <Ico n="check" s={18} /> Добавить
         </button>
+
+        {success && <SuccessModal text="Участник добавлен" onClose={() => { setSuccess(false); onClose(); }} />}
       </div>
     </div>
   );
