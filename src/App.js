@@ -298,12 +298,30 @@ export default function App() {
       let tgUser;
       if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
         tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+        window.Telegram.WebApp.expand();
       } else {
-        // Режим разработки — тестовый пользователь
         tgUser = { id: 999999999, first_name: "Тест", last_name: "Пользователь", username: "testuser" };
       }
       const dbUser = await dbGetOrCreateUser(tgUser);
       setUser(dbUser);
+
+      // Проверяем invite-ссылку — ?startapp=invite_XXXXXXXX
+      const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param
+        || new URLSearchParams(window.location.search).get("startapp");
+      if (startParam?.startsWith("invite_")) {
+        const inviteCode = startParam.replace("invite_", "");
+        const { data: group } = await supabase
+          .from("groups").select("id").eq("invite_code", inviteCode).single();
+        if (group) {
+          const { data: already } = await supabase.from("group_members")
+            .select("id").eq("group_id", group.id).eq("user_id", dbUser.id).single();
+          if (!already) {
+            await supabase.from("group_members")
+              .insert({ group_id: group.id, user_id: dbUser.id });
+          }
+        }
+      }
+
       const loaded = await dbLoadGroups(dbUser.id);
       setGroups(loaded);
       setLoading(false);
@@ -686,6 +704,20 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
             <div style={{ height: 8 }} />
             <button className="btn btn-ghost" onClick={() => setModal("addMember")}>
               <Ico n="plus" s={18} /> Добавить участника
+            </button>
+            <div style={{ height: 8 }} />
+            <button className="btn btn-ghost" onClick={() => {
+              const inviteLink = `https://t.me/SplitReciept_bot/sharereciept_personal_use?startapp=invite_${group.invite_code}`;
+              if (window.Telegram?.WebApp?.openTelegramLink) {
+                window.Telegram.WebApp.openTelegramLink(
+                  `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("Присоединяйся к нашей группе расходов в ShareReciept!")}`
+                );
+              } else {
+                navigator.clipboard.writeText(inviteLink);
+                alert("Ссылка скопирована: " + inviteLink);
+              }
+            }}>
+              <span style={{ fontSize: 18 }}>🔗</span> Поделиться группой
             </button>
             <div style={{ height: 12 }} />
             <button className="btn btn-danger" onClick={() => { if (window.confirm("Удалить группу?")) onDelGroup(); }}>
