@@ -579,9 +579,31 @@ function Onboard({ onDone }) {
 function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, onDelGroup, currentUserId }) {
   const [tab, setTab] = useState("expenses");
   const [modal, setModal] = useState(null);
+  const [notifying, setNotifying] = useState(false);
+  const [notifySuccess, setNotifySuccess] = useState(false);
   const debts = calcDebts(group.members, group.expenses);
   const bal = calcBalances(group.members, group.expenses);
   const spent = group.expenses.reduce((s, e) => s + e.amount, 0);
+
+  const sendNotifications = async () => {
+    if (!debts.length) return;
+    setNotifying(true);
+    try {
+      await supabase.functions.invoke("notify-debtors", {
+        body: {
+          group_id: group.id,
+          group_name: group.name,
+          debts,
+          members: group.members,
+        },
+      });
+      setNotifySuccess(true);
+    } catch (e) {
+      alert("Ошибка отправки уведомлений");
+    } finally {
+      setNotifying(false);
+    }
+  };
 
   return (
     <>
@@ -693,6 +715,27 @@ function GroupScreen({ group, onBack, onAddMember, onAddExpense, onDelExpense, o
                 );
               })
             )}
+            {debts.length > 0 && (
+              <>
+                <div style={{ height: 12 }} />
+                <button
+                  className="btn"
+                  disabled={notifying}
+                  onClick={sendNotifications}
+                  style={{
+                    background: "linear-gradient(135deg, #f5c842, #e6a800)",
+                    color: "#000", fontWeight: 700,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>🔔</span>
+                  {notifying ? "Отправляю..." : "Напомнить должникам"}
+                </button>
+                <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 8 }}>
+                  Должники получат сообщение в Telegram
+                </div>
+              </>
+            )}
+            {notifySuccess && <SuccessModal text="Уведомления отправлены!" onClose={() => setNotifySuccess(false)} />}
           </>
         )}
 
